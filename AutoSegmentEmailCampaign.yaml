@@ -1,0 +1,637 @@
+AWSTemplateFormatVersion: 2010-09-09
+Description: Amazon Pinpoint Segment Email Campaign Creation
+
+Parameters:
+
+  PinpointProjectId:
+    Type: String
+    Description: Amazon Pinpoint Project ID trigger a new campaign
+  EmailFromAddress:
+    Type: String
+    Description: Type the email that you would like the campaign email to be sent from
+
+Resources:
+
+  PinpointSegmentCreate:
+    Type: AWS::Lambda::Function
+    Properties:
+      Handler: index.lambda_handler
+      Role: !GetAtt PinpointSegmentCampaignCreateDeleteRole.Arn
+      Runtime: python3.8
+      Timeout: 60
+      Environment:
+        Variables:
+          LOG_LEVEL: "INFO"
+          PINPOINT_PROJECT_ID: !Ref PinpointProjectId
+      Code:
+        ZipFile: |
+          import boto3
+          import os
+          import logging
+          client = boto3.client('pinpoint')
+          appid = os.environ.get('PINPOINT_PROJECT_ID')
+          def lambda_handler(event, context):
+            print(event)
+            interest = event['interest']
+            product_name = event['product_name']
+            product_link = event['product_link']
+            segment_name = "segment" + "_" + interest + "_" + product_name
+            response = client.create_segment(
+            ApplicationId=appid,
+            WriteSegmentRequest={
+                'Dimensions': {
+                    'UserAttributes': {
+                        'interests': {
+                            'AttributeType': 'CONTAINS',
+                            'Values': [
+                                interest,
+                            ]
+                        }
+                    },
+                    'Behavior': {
+                        'Recency': {
+                            'Duration': 'DAY_30',
+                            'RecencyType': 'ACTIVE'
+                        }
+                    }
+                    },
+                'Name' : segment_name
+            })
+            logging.info(response)
+            return {
+              'SegmentId': response['SegmentResponse']['Id'],
+              'product_name': product_name,
+              'interest': interest,
+              'product_link': product_link
+            } 
+
+  PinpointSegmentStatus:
+    Type: AWS::Lambda::Function
+    Properties:
+      Handler: index.lambda_handler
+      Role: !GetAtt PinpointSegmentCampaignStatusRole.Arn
+      Runtime: python3.8
+      Timeout: 60
+      Environment:
+        Variables:
+          LOG_LEVEL: "INFO"
+          PINPOINT_PROJECT_ID: !Ref PinpointProjectId
+      Code:
+        ZipFile: |
+          import boto3
+          import os
+          import logging
+          client = boto3.client('pinpoint')
+          def lambda_handler(event, context):
+
+            interest = event['interest']
+            product_name = event['product_name']
+            product_link = event['product_link']
+            segmentid = event['SegmentId']
+            global log_level
+            log_level = str(os.environ.get('LOG_LEVEL')).upper()
+            if log_level not in [
+                                      'DEBUG', 'INFO',
+                                      'WARNING', 'ERROR',
+                                      'CRITICAL'
+                                  ]:
+              log_level = 'ERROR'
+            logging.getLogger().setLevel(log_level)
+            logging.info(event)
+
+            response = client.get_segment(
+              ApplicationId=os.environ.get('PINPOINT_PROJECT_ID'),
+              SegmentId=event['SegmentId']
+            )
+            logging.info(response)
+            
+            if len(response) != 0:
+              segment_id = response['SegmentResponse']['Id']
+              segment_status = "COMPLETED"
+            else:
+              segment_id = "NA"
+              segment_status = "INVALID"
+            
+            
+            return {
+              'SegmentId': segment_id,
+              'SegmentStatus': segment_status,
+              'product_name': product_name,
+              'interest': interest,
+              'product_link': product_link,
+            } 
+
+  PinpointCampaignCreate:
+    Type: AWS::Lambda::Function
+    Properties:
+      Handler: index.lambda_handler
+      Role: !GetAtt PinpointSegmentCampaignCreateDeleteRole.Arn
+      Runtime: python3.8
+      Timeout: 60
+      Environment:
+        Variables:
+          LOG_LEVEL: "INFO"
+          PINPOINT_PROJECT_ID: !Ref PinpointProjectId
+          FROM_ADDRESS: !Ref EmailFromAddress
+      Code:
+        ZipFile: |
+          import boto3
+          import os
+          import logging
+          client = boto3.client('pinpoint')
+          def lambda_handler(event, context):
+            print(event)
+            interest = event['interest']
+            segment_id = event['SegmentId']
+            product_name = event['product_name']
+            product_link = event['product_link']
+            from_email = os.environ.get('FROM_ADDRESS')
+            campaign_name = "campaign" + "_" + interest + "_" + product_name
+            appid = os.environ.get('PINPOINT_PROJECT_ID')
+            global log_level
+            log_level = str(os.environ.get('LOG_LEVEL')).upper()
+            if log_level not in [
+                                      'DEBUG', 'INFO',
+                                      'WARNING', 'ERROR',
+                                      'CRITICAL'
+                                  ]:
+              log_level = 'ERROR'
+            logging.getLogger().setLevel(log_level)
+            logging.info(event)
+
+            response = client.create_campaign(
+                ApplicationId=appid,
+                WriteCampaignRequest={
+                    'MessageConfiguration': {
+                        'EmailMessage': {
+                          'Body':'Hello',
+                          'FromAddress': from_email,
+                          'HtmlBody': """<html>
+                          <head></head>
+                          <body>
+                            <h1> Hello {{User.UserAttributes.username}} interested in """ + interest + """ </h1>
+                            <p> New product for you """ + product_name + """ </p>
+                            <p> Hope to see you back soon! </p>
+                          </body>
+                          </html>
+                          """,
+                        'Title': 'New_Product'
+                        }},
+                    'Name': campaign_name,
+                    'Schedule': {
+                        'Frequency': 'ONCE',
+                        'IsLocalTime': False, 
+                        'StartTime': 'IMMEDIATE',
+                        'Timezone': 'UTC+01'
+                    },
+                    'SegmentId': segment_id
+                    })
+            
+            logging.info(response)
+            return {
+              'CampaignId': response['CampaignResponse']['Id'],
+              'SegmentId': response['CampaignResponse']['SegmentId'],
+              'CampaignStatus': response['CampaignResponse']['State']['CampaignStatus']
+            }
+
+  PinpointCampaignCampaignStatus:
+    Type: AWS::Lambda::Function
+    Properties:
+      Handler: index.lambda_handler
+      Role: !GetAtt PinpointSegmentCampaignStatusRole.Arn
+      Runtime: python3.8
+      Timeout: 60
+      Environment:
+        Variables:
+          LOG_LEVEL: "INFO"
+          PINPOINT_PROJECT_ID: !Ref PinpointProjectId
+      Code:
+        ZipFile: |
+          import boto3
+          import os
+          import logging
+          client = boto3.client('pinpoint')
+          def lambda_handler(event, context):
+            global log_level
+            log_level = str(os.environ.get('LOG_LEVEL')).upper()
+            if log_level not in [
+                                      'DEBUG', 'INFO',
+                                      'WARNING', 'ERROR',
+                                      'CRITICAL'
+                                  ]:
+              log_level = 'ERROR'
+            logging.getLogger().setLevel(log_level)
+            logging.info(event)
+            response = client.get_campaign_activities(
+              ApplicationId=os.environ.get('PINPOINT_PROJECT_ID'),
+              CampaignId=event['CampaignId']
+            )
+            logging.info(response)
+            activity = response['ActivitiesResponse']['Item'][0]
+            try:
+              end = activity['End']
+            except:
+              end = "NA"
+            try:
+              start = activity['Start']
+            except:
+              start = "NA"
+            try:
+              successendpoints = activity['SuccessfulEndpointCount']
+            except:
+              successendpoints = "NA"
+            try:
+              totalendpoints = activity['TotalEndpointCount']
+            except:
+              totalendpoints = "NA"
+
+            return {
+              'SegmentId' : event['SegmentId'],
+              'CampaignId': activity['CampaignId'],
+              'CampaignStatus': activity['State'],
+              'Start': start,
+              'End': end,
+              'SuccessfulEndpointCount': successendpoints,
+              'TotalEndpointCount': totalendpoints
+            }
+
+  PinpointDeleteCampaignSegment:
+    Type: AWS::Lambda::Function
+    Properties:
+      Handler: index.lambda_handler
+      Role: !GetAtt PinpointSegmentCampaignCreateDeleteRole.Arn
+      Runtime: python3.8
+      Timeout: 60
+      Environment:
+        Variables:
+          LOG_LEVEL: "INFO"
+          PINPOINT_PROJECT_ID: !Ref PinpointProjectId
+      Code:
+        ZipFile: |
+          import boto3
+          import os
+          import logging
+          import time
+          client = boto3.client('pinpoint')
+          def lambda_handler(event, context):
+            global log_level
+            log_level = str(os.environ.get('LOG_LEVEL')).upper()
+            if log_level not in [
+                                      'DEBUG', 'INFO',
+                                      'WARNING', 'ERROR',
+                                      'CRITICAL'
+                                  ]:
+              log_level = 'ERROR'
+            logging.getLogger().setLevel(log_level)
+            logging.info(event)
+            response = client.delete_campaign(
+              ApplicationId=os.environ.get('PINPOINT_PROJECT_ID'),
+              CampaignId=event['CampaignId']
+              )
+            logging.info(response)
+            time.sleep(3)
+
+            response = client.delete_segment(
+                ApplicationId=os.environ.get('PINPOINT_PROJECT_ID'),
+                SegmentId=event['SegmentId']
+            )
+            logging.info(response)            
+
+            return {
+              'SegmentId' : event['SegmentId'],
+              'CampaignId': event['CampaignId'],
+              'CampaignStatus': event['CampaignStatus']
+            }
+
+  PinpointDeleteSegment:
+    Type: AWS::Lambda::Function
+    Properties:
+      Handler: index.lambda_handler
+      Role: !GetAtt PinpointSegmentCampaignCreateDeleteRole.Arn
+      Runtime: python3.8
+      Timeout: 60
+      Environment:
+        Variables:
+          LOG_LEVEL: "INFO"
+          PINPOINT_PROJECT_ID: !Ref PinpointProjectId
+      Code:
+        ZipFile: |
+          import boto3
+          import os
+          import logging
+          import time
+          client = boto3.client('pinpoint')
+          def lambda_handler(event, context):
+            global log_level
+            log_level = str(os.environ.get('LOG_LEVEL')).upper()
+            if log_level not in [
+                                      'DEBUG', 'INFO',
+                                      'WARNING', 'ERROR',
+                                      'CRITICAL'
+                                  ]:
+              log_level = 'ERROR'
+            logging.getLogger().setLevel(log_level)
+            logging.info(event)
+
+            response = client.delete_segment(
+                ApplicationId=os.environ.get('PINPOINT_PROJECT_ID'),
+                SegmentId=event['SegmentId']
+            )
+            logging.info(response)            
+
+            return {
+              'SegmentId' : event['SegmentId']
+              'CampaignId': event['CampaignId'],
+              'CampaignStatus': event['CampaignStatus'],
+              'Start': event['Start'],
+              'End': event['End'],
+              'SuccessfulEndpointCount': event['SuccessfulEndpointCount'],
+              'TotalEndpointCount': event['TotalEndpointCount']
+            }
+
+  PinpointCampaignNotificationTopic:
+    Type: AWS::SNS::Topic
+    Properties:
+      DisplayName: 'PinpointCreateCampaignNotifications'
+
+  SegmentCampaignStateMachine:
+    Type: AWS::StepFunctions::StateMachine
+    Properties:
+      RoleArn: !GetAtt StateMachineRole.Arn
+      DefinitionString:
+        !Sub
+          - |-
+            {
+              "StartAt": "CreateSegment",
+              "States": {
+                "CreateSegment": {
+                  "Type": "Task",
+                  "Resource": "${PinpointSegmentCreateArn}",
+                  "Next": "SegmentWait"
+                },
+                "SegmentWait": {
+                  "Type": "Wait",
+                  "Seconds": 5,
+                  "Next": "SegmentStatus"
+                },
+                "SegmentStatus": {
+                  "Type": "Task",
+                  "Resource": "${PinpointSegmentStatusArn}",
+                  "Next": "IsSegmentFinished"
+                },
+                "IsSegmentFinished": {
+                  "Type": "Choice",
+                  "Default": "SegmentWait",
+                  "Choices": [
+                    {
+                      "Variable": "$.SegmentStatus",
+                      "StringEquals": "FAILED",
+                      "Next": "SegmentFailed"
+                    },
+                    {
+                      "Variable": "$.SegmentStatus",
+                      "StringEquals": "COMPLETED",
+                      "Next": "SegmentSuccess"
+                    }
+                  ]
+                },             
+                "SegmentSuccess": {
+                  "Type": "Pass",
+                  "Parameters": {
+                    "SegmentId.$": "$.SegmentId",
+                    "SegmentStatus.$": "$.SegmentStatus",
+                    "product_name.$": "$.product_name",
+                    "interest.$": "$.interest",
+                    "product_link.$": "$.product_link"
+                  },
+                  "Next": "CreateCampaign"
+                },
+                "CreateCampaign": {
+                  "Type": "Task",
+                  "Resource": "${PinpointCampaignCreateArn}",
+                  "Next": "CampaignWait"
+                },
+                "CampaignWait": {
+                  "Type": "Wait",
+                  "Seconds": 5,
+                  "Next": "CampaignStatus"
+                },
+                "CampaignStatus": {
+                  "Type": "Task",
+                  "Resource": "${PinpointCampaignCampaignStatusArn}",
+                  "Next": "IsCampaignFinished"
+                },
+                "IsCampaignFinished": {
+                  "Type": "Choice",
+                  "Default": "CampaignWait",
+                  "Choices": [
+                    {
+                      "Variable": "$.CampaignStatus",
+                      "StringEquals": "INVALID",
+                      "Next": "DeleteSegment"
+                    },
+                    {
+                      "Variable": "$.CampaignStatus",
+                      "StringEquals": "COMPLETED",
+                      "Next": "CampaignSuccess"
+                    }
+                  ]
+                },
+                "CampaignSuccess": {
+                  "Type": "Pass",
+                  "Parameters": {
+                    "SegmentId.$": "$.SegmentId",
+                    "CampaignId.$": "$.CampaignId",
+                    "CampaignStatus.$": "$.CampaignStatus",
+                    "Start.$": "$.Start",
+                    "End.$": "$.End",
+                    "SuccessfulEndpointCount.$": "$.SuccessfulEndpointCount",
+                    "TotalEndpointCount.$": "$.TotalEndpointCount"
+                  },
+                  "Next": "DeleteCampaignSegment"
+                },
+                "DeleteCampaignSegment": {
+                  "Type": "Task",
+                  "Resource": "${PinpointDeleteCampaignSegmentArn}",
+                  "Next": "EmitSuccess"
+                },
+                "EmitSuccess": {
+                  "Type": "Task",
+                  "Resource": "arn:aws:states:::sns:publish",
+                  "ResultPath": null,
+                  "Parameters": {
+                    "TopicArn": "${SNSTopicArn}",
+                    "Message": {
+                      "Message": "Campaign Create Successful",
+                      "CampaignCreateResult.$": "$"
+                    },
+                    "Subject": "Amazon Pinpoint Campaign Create Successful",
+                    "MessageAttributes": {
+                      "notification_type": {
+                        "DataType": "String",
+                        "StringValue": "success"
+                      }
+                    }
+                  },
+                  "End": true
+                },
+                "SegmentFailed": {
+                  "Type": "Task",
+                  "Resource": "arn:aws:states:::sns:publish",
+                  "Parameters": {
+                    "TopicArn": "${SNSTopicArn}",
+                    "Message": {
+                      "Message": "Segment Create Failed"
+                    },
+                    "Subject": "Amazon Pinpoint Campaign Create Failed",
+                    "MessageAttributes": {
+                        "notification_type": {
+                            "DataType": "String",
+                            "StringValue": "failure"
+                        }
+                    }
+                  },
+                  "End": true
+                },
+                "DeleteSegment": {
+                  "Type": "Task",
+                  "Resource": "${PinpointDeleteSegmentArn}",
+                  "Next": "CampaignFailed"
+                },
+                "CampaignFailed": {
+                  "Type": "Task",
+                  "Resource": "arn:aws:states:::sns:publish",
+                  "Parameters": {
+                    "TopicArn": "${SNSTopicArn}",
+                    "Message": {
+                      "Message": "Campaign Create Failed",
+                      "CampaignCreateResult.$": "$"
+                    },
+                    "Subject": "Amazon Pinpoint Campaign Create Failed",
+                    "MessageAttributes": {
+                        "notification_type": {
+                            "DataType": "String",
+                            "StringValue": "failure"
+                        }
+                    }
+                  },
+                  "End": true
+                }
+              }
+            }
+          - {PinpointDeleteSegmentArn: !GetAtt PinpointDeleteSegment.Arn, PinpointDeleteCampaignSegmentArn: !GetAtt PinpointDeleteCampaignSegment.Arn, PinpointSegmentStatusArn: !GetAtt PinpointSegmentStatus.Arn, PinpointSegmentCreateArn: !GetAtt PinpointSegmentCreate.Arn, PinpointCampaignCreateArn: !GetAtt PinpointCampaignCreate.Arn, PinpointCampaignCampaignStatusArn: !GetAtt PinpointCampaignCampaignStatus.Arn, SNSTopicArn: !Ref PinpointCampaignNotificationTopic}
+
+  PinpointSegmentCampaignCreateDeleteRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: 2012-10-17
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service:
+                - lambda.amazonaws.com
+            Action:
+              - 'sts:AssumeRole'
+      Path: "/"
+      Policies:
+        -
+          PolicyName: "root"
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              -
+                Effect: "Allow"
+                Action:
+                  - "logs:CreateLogGroup"
+                  - "logs:CreateLogStream"
+                  - "logs:PutLogEvents"
+                Resource: !Sub "arn:aws:logs:${AWS::Region}:${AWS::AccountId}:*"
+              -
+                Effect: "Allow"
+                Action:
+                  - "mobiletargeting:CreateCampaign"
+                  - "mobiletargeting:DeleteCampaign"
+                  - "mobiletargeting:CreateSegment"
+                  - "mobiletargeting:DeleteSegment"
+                Resource:
+                  - !Sub "arn:aws:mobiletargeting:${AWS::Region}:${AWS::AccountId}:*"
+
+  PinpointSegmentCampaignStatusRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: 2012-10-17
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service:
+                - lambda.amazonaws.com
+            Action:
+              - 'sts:AssumeRole'
+      Path: "/"
+      Policies:
+        -
+          PolicyName: "root"
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              -
+                Effect: "Allow"
+                Action:
+                  - "logs:CreateLogGroup"
+                  - "logs:CreateLogStream"
+                  - "logs:PutLogEvents"
+                Resource: !Sub "arn:aws:logs:${AWS::Region}:${AWS::AccountId}:*"
+              -
+                Effect: "Allow"
+                Action:
+                  - "mobiletargeting:GetCampaignActivities"
+                  - "mobiletargeting:GetSegment"
+                Resource:
+                  - !Sub "arn:aws:mobiletargeting:${AWS::Region}:${AWS::AccountId}:*"
+
+  StateMachineRole:
+    Type: AWS::IAM::Role
+    Metadata:
+      cfn_nag:
+        rules_to_suppress:
+          - id: W76
+            reason: Complex Role that is used for StateMachine to invoke many other lambdas
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          -
+            Effect: "Allow"
+            Principal:
+              Service:
+                - "states.amazonaws.com"
+            Action:
+              - "sts:AssumeRole"
+      Path: "/"
+      Policies:
+        -
+          PolicyName: "root"
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              -
+                Effect: "Allow"
+                Action: "lambda:InvokeFunction"
+                Resource:
+                  - !GetAtt PinpointCampaignCreate.Arn
+                  - !GetAtt PinpointCampaignCampaignStatus.Arn
+                  - !GetAtt PinpointSegmentCreate.Arn
+                  - !GetAtt PinpointSegmentStatus.Arn
+                  - !GetAtt PinpointDeleteCampaignSegment.Arn
+                  - !GetAtt PinpointDeleteSegment.Arn
+              -
+                Effect: "Allow"
+                Action:  sns:Publish
+                Resource: !Ref PinpointCampaignNotificationTopic
+
+Outputs:
+  SegmentCampaignStateMachineArn:
+    Description: The Segment Campaign Create State Machine ARN
+    Value: !Ref SegmentCampaignStateMachine
