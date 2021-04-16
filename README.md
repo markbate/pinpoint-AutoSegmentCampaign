@@ -26,5 +26,11 @@ Incoming payload example from the Products' Database:
 2)	The solution is currently configured to send email campaigns immediately
 3)	Pinpoint users must have a User Attribute named "interest" and that should match with the product DB payload variable "interest" if that user wants to receive an email
 
+**Implementation**
+1) Download the Amazon CloudFormation template in this Repository - https://github.com/Pioank/pinpoint-AutoSegmentCampaign/blob/main/AutoSegmentEmailCampaign.yaml
+2) Navigate to the CLoudFormation part of the AWS console and create new Stack with Existing Resources
+3) Upload the yaml template from step 1
+4) You will need your Pinpoint App ID and the email that you would like to send the emails from (that email address needs to be verified via the Pinpoint console first)
+
 ## StateMachine Definition
 ![alt text](https://github.com/Pioank/pinpoint-AutoSegmentCampaign/blob/main/StateMachine-FlowChart.JPG)
