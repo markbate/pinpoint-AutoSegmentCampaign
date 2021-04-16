@@ -24,6 +24,7 @@ Incoming payload example from the Products' Database:
 
 1)	You will need to amend the email HTML body template on the "Create Campaign Lambda"
 2)	The solution is currently configured to send email campaigns immediately
+3)	Pinpoint users must have a User Attribute named "interest" and that should match with the product DB payload variable "interest" if that user wants to receive an email
 
 ## StateMachine Definition
 ![alt text](https://github.com/Pioank/pinpoint-AutoSegmentCampaign/blob/main/StateMachine-FlowChart.JPG)
