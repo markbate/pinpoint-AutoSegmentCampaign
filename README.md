@@ -1,3 +1,9 @@
+**UseCases**
+
+1) Product drops
+2) Out of stock
+3) New product launches for which customer has registered interest
+
 **Background**
 
 Customers want to be up to date with the latest products while companies want inform their customers about new entries in their product database. To avoid "SPAMMING", companies need to identify their customers' interests. Once the interests such as product category have been identified, then a process will need to be created so that every time a product enters the database, customers who are interested in that product category will be informed.
