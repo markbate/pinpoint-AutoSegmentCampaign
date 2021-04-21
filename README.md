@@ -15,6 +15,7 @@ Ideally an entry of a new product would trigger the communication process to the
 2) Create a dynamic segment based on the customers' interests stored in the User Attributes
 3) Send an Email campaign immediately
 4) Delete both segment and campaign once they have been both completed
+5) Log a summary of all the actions taken in a DynamoDB table. The variables logged are: Campaing ID/Status/Start/End/Successfull & Total endpoints, SegmentId, Interest, ProductName, ProductLink from initial payload
 
 This process is fully automated and the only input required is the product Category of the new product, the product name and product link. Note that these fields can be changed but code changes will be required.
 
@@ -39,4 +40,4 @@ Incoming payload example from the Products' Database:
 4) You will need your Pinpoint App ID and the email that you would like to send the emails from (that email address needs to be verified via the Pinpoint console first)
 
 ## StateMachine Definition
-![alt text](https://github.com/Pioank/pinpoint-AutoSegmentCampaign/blob/main/StateMachine-FlowChart.JPG)
+![alt text](https://github.com/Pioank/pinpoint-AutoSegmentCampaign/blob/main/StateMachine-Workflow.png)
